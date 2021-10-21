@@ -1,66 +1,46 @@
 package slack
 
 import (
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/terraform"
+	"context"
+	"errors"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/slack-go/slack"
 )
 
-func Provider() terraform.ResourceProvider {
-	var p *schema.Provider
-	p = &schema.Provider{
+func Provider() *schema.Provider {
+	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
 			"token": {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("SLACK_TOKEN", nil),
-				Description: descriptions["token"],
+				Description: "The OAuth token used to connect to Slack. This can also be set via the SLACK_TOKEN environment variable.",
 			},
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
+			"slack_conversation": dataSourceConversation(),
 			"slack_user":         dataSourceSlackUser(),
 			"slack_usergroup":    dataSourceUserGroup(),
-			"slack_conversation": dataSourceConversation(),
-			"slack_channel":      dataSourceChannel(), // deprecated
-			"slack_group":        dataSourceGroup(),   // deprecated
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"slack_usergroup":          resourceSlackUserGroup(),
-			"slack_usergroup_members":  resourceSlackUserGroupMembers(),
 			"slack_conversation":       resourceSlackConversation(),
-			"slack_channel":            resourceSlackChannel(), // deprecated
-			"slack_group":              resourceSlackGroup(),   // deprecated
+			"slack_usergroup":          resourceSlackUserGroup(),
 			"slack_usergroup_channels": resourceSlackUserGroupChannels(),
+			"slack_usergroup_members":  resourceSlackUserGroupMembers(),
 		},
-	}
-
-	p.ConfigureFunc = providerConfigure(p)
-
-	return p
-}
-
-var descriptions map[string]string
-
-func init() {
-	descriptions = map[string]string{
-		"token": "The OAuth token used to connect to Slack.",
+		ConfigureContextFunc: providerConfigure,
 	}
 }
 
-func providerConfigure(p *schema.Provider) schema.ConfigureFunc {
-	return func(d *schema.ResourceData) (interface{}, error) {
-		config := Config{
-			Token: d.Get("token").(string),
-		}
-
-		meta, err := config.Client()
-		if err != nil {
-			return nil, err
-		}
-
-		meta.(*Team).StopContext = p.StopContext()
-
-		return meta, nil
+func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+	token := d.Get("token").(string)
+	if token == "" {
+		return nil, diag.FromErr(errors.New("token must be configured"))
 	}
+
+	return slack.New(token), nil
 }

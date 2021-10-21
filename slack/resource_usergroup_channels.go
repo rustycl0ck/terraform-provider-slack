@@ -3,25 +3,15 @@ package slack
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/slack-go/slack"
 	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/slack-go/slack"
 )
 
 func resourceSlackUserGroupChannels() *schema.Resource {
 	return &schema.Resource{
-		Read:   resourceSlackUserGroupChannelsRead,
-		Create: resourceSlackUserGroupChannelsCreate,
-		Update: resourceSlackUserGroupChannelsUpdate,
-		Delete: resourceSlackUserGroupChannelsDelete,
-
-		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-				_ = d.Set("usergroup_id", d.Id())
-				return schema.ImportStatePassthrough(d, m)
-			},
-		},
-
 		Schema: map[string]*schema.Schema{
 			"usergroup_id": {
 				Type:     schema.TypeString,
@@ -35,6 +25,16 @@ func resourceSlackUserGroupChannels() *schema.Resource {
 				Required: true,
 			},
 		},
+		ReadContext:   resourceSlackUserGroupChannelsRead,
+		CreateContext: resourceSlackUserGroupChannelsCreate,
+		UpdateContext: resourceSlackUserGroupChannelsUpdate,
+		DeleteContext: resourceSlackUserGroupChannelsDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: func(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+				_ = d.Set("usergroup_id", d.Id())
+				return schema.ImportStatePassthroughContext(ctx, d, m)
+			},
+		},
 	}
 }
 
@@ -43,10 +43,8 @@ func configureSlackUserGroupChannels(d *schema.ResourceData, userGroup slack.Use
 	_ = d.Set("channels", append(userGroup.Prefs.Channels, userGroup.Prefs.Groups...))
 }
 
-func resourceSlackUserGroupChannelsCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
-
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
+func resourceSlackUserGroupChannelsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
 	usergroupId := d.Get("usergroup_id").(string)
 	log.Printf("[DEBUG] Creating usergroup channels relation: %s", usergroupId)
@@ -67,7 +65,7 @@ func resourceSlackUserGroupChannelsCreate(d *schema.ResourceData, meta interface
 	userGroup, err := client.UpdateUserGroupContext(ctx, *params)
 
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	configureSlackUserGroupChannels(d, userGroup)
@@ -75,16 +73,14 @@ func resourceSlackUserGroupChannelsCreate(d *schema.ResourceData, meta interface
 	return nil
 }
 
-func resourceSlackUserGroupChannelsRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
-
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
+func resourceSlackUserGroupChannelsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
 	usergroupId := d.Get("usergroup_id").(string)
 	log.Printf("[DEBUG] Reading usergroup channels relation: %s", usergroupId)
 
 	if usergroupId != d.Id() {
-		return fmt.Errorf("it looks usergroup id has been changed but it's not allowed. Res ID: %s", d.Id())
+		return diag.FromErr(fmt.Errorf("it looks usergroup id has been changed but it's not allowed. Res ID: %s", d.Id()))
 	}
 
 	// Use a cache for usergroups api call because the limitation is strict
@@ -98,7 +94,7 @@ func resourceSlackUserGroupChannelsRead(d *schema.ResourceData, meta interface{}
 		})
 
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		userGroups = &tempUserGroups
@@ -120,16 +116,14 @@ func resourceSlackUserGroupChannelsRead(d *schema.ResourceData, meta interface{}
 	return nil
 }
 
-func resourceSlackUserGroupChannelsUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
-
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
+func resourceSlackUserGroupChannelsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
 	usergroupId := d.Get("usergroup_id").(string)
 	log.Printf("[DEBUG] Updating usergroup channels relation: %s", usergroupId)
 
 	if usergroupId != d.Id() {
-		return fmt.Errorf("it looks usergroup id has been changed but it's not allowed. Res ID: %s", d.Id())
+		return diag.FromErr(fmt.Errorf("it looks usergroup id has been changed but it's not allowed. Res ID: %s", d.Id()))
 	}
 
 	iChannels := d.Get("channels").(*schema.Set).List()
@@ -148,7 +142,7 @@ func resourceSlackUserGroupChannelsUpdate(d *schema.ResourceData, meta interface
 	userGroup, err := client.UpdateUserGroupContext(ctx, *params)
 
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	configureSlackUserGroupChannels(d, userGroup)
@@ -156,16 +150,15 @@ func resourceSlackUserGroupChannelsUpdate(d *schema.ResourceData, meta interface
 	return nil
 }
 
-func resourceSlackUserGroupChannelsDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
+func resourceSlackUserGroupChannelsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 	usergroupId := d.Get("usergroup_id").(string)
 
 	log.Printf("[DEBUG] Deleting usergroup channels relation: %s", usergroupId)
 
 	if usergroupId != d.Id() {
-		return fmt.Errorf("it looks usergroup id has been changed but it's not allowed. Res ID: %s", d.Id())
+		return diag.FromErr(fmt.Errorf("it looks usergroup id has been changed but it's not allowed. Res ID: %s", d.Id()))
 	}
 
 	params := &slack.UserGroup{
@@ -178,5 +171,5 @@ func resourceSlackUserGroupChannelsDelete(d *schema.ResourceData, meta interface
 	_, err := client.UpdateUserGroupContext(ctx, *params)
 
 	d.SetId("")
-	return err
+	return diag.FromErr(err)
 }

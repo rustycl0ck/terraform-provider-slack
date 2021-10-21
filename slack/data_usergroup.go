@@ -3,15 +3,15 @@ package slack
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/slack-go/slack"
 	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/slack-go/slack"
 )
 
 func dataSourceUserGroup() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSlackUserGroupRead,
-
 		Schema: map[string]*schema.Schema{
 			"usergroup_id": {
 				Type:     schema.TypeString,
@@ -39,14 +39,14 @@ func dataSourceUserGroup() *schema.Resource {
 				Computed: true,
 			},
 		},
+		ReadContext: dataSlackUserGroupRead,
 	}
 }
 
-func dataSlackUserGroupRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
+func dataSlackUserGroupRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
 	usergroupId := d.Get("usergroup_id").(string)
-	ctx := context.WithValue(context.Background(), ctxId, usergroupId)
 
 	log.Printf("[DEBUG] Reading usergroup: %s", usergroupId)
 	groups, err := client.GetUserGroupsContext(ctx, func(params *slack.GetUserGroupsParams) {
@@ -56,7 +56,7 @@ func dataSlackUserGroupRead(d *schema.ResourceData, meta interface{}) error {
 	})
 
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	for _, group := range groups {
@@ -71,5 +71,5 @@ func dataSlackUserGroupRead(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
-	return fmt.Errorf("%s could not be found", usergroupId)
+	return diag.FromErr(fmt.Errorf("%s could not be found", usergroupId))
 }

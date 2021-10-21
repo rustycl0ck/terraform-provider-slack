@@ -3,10 +3,12 @@ package slack
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
-	"github.com/slack-go/slack"
 	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/slack-go/slack"
 )
 
 const (
@@ -21,15 +23,7 @@ var validateConversationActionOnDestroyValue = validation.StringInSlice([]string
 
 func resourceSlackConversation() *schema.Resource {
 	return &schema.Resource{
-		Read:   resourceSlackConversationRead,
-		Create: resourceSlackConversationCreate,
-		Update: resourceSlackConversationUpdate,
-		Delete: resourceSlackConversationDelete,
-
-		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
-		},
-
+		Description: "Channel-like things encountered in Slack",
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:     schema.TypeString,
@@ -79,23 +73,49 @@ func resourceSlackConversation() *schema.Resource {
 				Computed: true,
 			},
 		},
+		ReadContext:   resourceSlackConversationRead,
+		CreateContext: resourceSlackConversationCreate,
+		UpdateContext: resourceSlackConversationUpdate,
+		DeleteContext: resourceSlackConversationDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
+		},
 	}
 }
 
-func configureSlackConversation(d *schema.ResourceData, channel *slack.Channel) {
-	d.SetId(channel.ID)
-	_ = d.Set("name", channel.Name)
-	_ = d.Set("topic", channel.Topic.Value)
-	_ = d.Set("purpose", channel.Purpose.Value)
-	_ = d.Set("is_archived", channel.IsArchived)
-	_ = d.Set("is_shared", channel.IsShared)
-	_ = d.Set("is_ext_shared", channel.IsExtShared)
-	_ = d.Set("is_org_shared", channel.IsOrgShared)
-	_ = d.Set("created", channel.Created)
-	_ = d.Set("creator", channel.Creator)
+func configureSlackConversation(d *schema.ResourceData, channel *slack.Channel) error {
+	if err := d.Set("name", channel.Name); err != nil {
+		return err
+	}
+	if err := d.Set("topic", channel.Topic.Value); err != nil {
+		return err
+	}
+	if err := d.Set("purpose", channel.Purpose.Value); err != nil {
+		return err
+	}
+	if err := d.Set("is_archived", channel.IsArchived); err != nil {
+		return err
+	}
+	if err := d.Set("is_shared", channel.IsShared); err != nil {
+		return err
+	}
+	if err := d.Set("is_ext_shared", channel.IsExtShared); err != nil {
+		return err
+	}
+	if err := d.Set("is_org_shared", channel.IsOrgShared); err != nil {
+		return err
+	}
+	if err := d.Set("created", channel.Created); err != nil {
+		return err
+	}
+	if err := d.Set("creator", channel.Creator); err != nil {
+		return err
+	}
 
 	// Required
-	_ = d.Set("is_private", channel.IsPrivate)
+	if err := d.Set("is_private", channel.IsPrivate); err != nil {
+		return err
+	}
 
 	// Never support
 	//_ = d.Set("members", channel.Members)
@@ -104,65 +124,62 @@ func configureSlackConversation(d *schema.ResourceData, channel *slack.Channel) 
 	//_ = d.Set("unread_count_display", channel.UnreadCountDisplay)
 	//_ = d.Set("last_read", channel.Name)
 	//_ = d.Set("latest", channel.Name)
+	return nil
 }
 
-func resourceSlackConversationCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
+func resourceSlackConversationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
 	name := d.Get("name").(string)
 	isPrivate := d.Get("is_private").(bool)
-
-	ctx := context.Background()
 
 	log.Printf("[DEBUG] Creating Conversation: %s", name)
 	channel, err := client.CreateConversationContext(ctx, name, isPrivate)
 
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	configureSlackConversation(d, channel)
-
-	return nil
+	d.SetId(channel.ID)
+	return resourceSlackConversationRead(ctx, d, meta)
 }
 
-func resourceSlackConversationRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
+func resourceSlackConversationRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 	id := d.Id()
 
 	log.Printf("[DEBUG] Reading Conversation: %s", d.Id())
 	channel, err := client.GetConversationInfoContext(ctx, id, false)
 
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	configureSlackConversation(d, channel)
+	if err := configureSlackConversation(d, channel); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
 
-func resourceSlackConversationUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
-
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
+func resourceSlackConversationUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 	id := d.Id()
 
 	if _, err := client.RenameConversationContext(ctx, id, d.Get("name").(string)); err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if topic, ok := d.GetOk("topic"); ok {
 		if _, err := client.SetTopicOfConversationContext(ctx, id, topic.(string)); err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if purpose, ok := d.GetOk("purpose"); ok {
 		if _, err := client.SetPurposeOfConversationContext(ctx, id, purpose.(string)); err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
@@ -170,25 +187,23 @@ func resourceSlackConversationUpdate(d *schema.ResourceData, meta interface{}) e
 		if isArchived.(bool) {
 			if err := client.ArchiveConversationContext(ctx, id); err != nil {
 				if err.Error() != "already_archived" {
-					return err
+					return diag.FromErr(err)
 				}
 			}
 		} else {
 			if err := client.UnArchiveConversationContext(ctx, id); err != nil {
 				if err.Error() != "not_archived" {
-					return err
+					return diag.FromErr(err)
 				}
 			}
 		}
 	}
 
-	return resourceSlackConversationRead(d, meta)
+	return resourceSlackConversationRead(ctx, d, meta)
 }
 
-func resourceSlackConversationDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
-
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
+func resourceSlackConversationDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 	id := d.Id()
 
 	action := d.Get("action_on_destroy").(string)
@@ -200,11 +215,11 @@ func resourceSlackConversationDelete(d *schema.ResourceData, meta interface{}) e
 		log.Printf("[DEBUG] Deleting(archive) Conversation: %s (%s)", id, d.Get("name"))
 		if err := client.ArchiveConversationContext(ctx, id); err != nil {
 			if err.Error() != "already_archived" {
-				return err
+				return diag.FromErr(err)
 			}
 		}
 	default:
-		return fmt.Errorf("unknown action was provided. (%s)", action)
+		return diag.FromErr(fmt.Errorf("unknown action was provided. (%s)", action))
 	}
 
 	d.SetId("")

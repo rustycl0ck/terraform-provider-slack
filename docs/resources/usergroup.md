@@ -3,12 +3,12 @@
 page_title: "slack_usergroup Resource - terraform-provider-slack"
 subcategory: ""
 description: |-
-  
+  Group of users with handle
 ---
 
 # slack_usergroup (Resource)
 
-
+Group of users with handle
 
 
 

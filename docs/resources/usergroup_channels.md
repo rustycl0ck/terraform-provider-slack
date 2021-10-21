@@ -17,7 +17,7 @@ description: |-
 
 ### Required
 
-- **channels** (List of String)
+- **channels** (Set of String)
 - **usergroup_id** (String)
 
 ### Optional

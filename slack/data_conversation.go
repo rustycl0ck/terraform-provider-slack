@@ -2,14 +2,14 @@ package slack
 
 import (
 	"context"
-	"github.com/hashicorp/terraform/helper/schema"
-	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/slack-go/slack"
 )
 
 func dataSourceConversation() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSlackConversationRead,
-
 		Schema: map[string]*schema.Schema{
 			"channel_id": {
 				Type:     schema.TypeString,
@@ -58,34 +58,60 @@ func dataSourceConversation() *schema.Resource {
 				Computed: true,
 			},
 		},
+		ReadContext: dataSlackConversationRead,
 	}
 }
 
-func dataSlackConversationRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Team).client
+func dataSlackConversationRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*slack.Client)
 
 	channelId := d.Get("channel_id").(string)
-
-	ctx := context.WithValue(context.Background(), ctxId, channelId)
-
-	log.Printf("[DEBUG] Reading Conversation: %s", channelId)
 	channel, err := client.GetConversationInfoContext(ctx, channelId, false)
 
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	d.SetId(channel.ID)
-	_ = d.Set("name", channel.Name)
-	_ = d.Set("topic", channel.Topic.Value)
-	_ = d.Set("purpose", channel.Purpose.Value)
-	_ = d.Set("is_private", channel.IsPrivate)
-	_ = d.Set("is_archived", channel.IsArchived)
-	_ = d.Set("is_shared", channel.IsShared)
-	_ = d.Set("is_ext_shared", channel.IsExtShared)
-	_ = d.Set("is_org_shared", channel.IsOrgShared)
-	_ = d.Set("created", channel.Created)
-	_ = d.Set("creator", channel.Creator)
+	if err := d.Set("name", channel.Name); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("topic", channel.Topic.Value); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("purpose", channel.Purpose.Value); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("is_private", channel.IsPrivate); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("is_archived", channel.IsArchived); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("is_shared", channel.IsShared); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("is_ext_shared", channel.IsExtShared); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("is_org_shared", channel.IsOrgShared); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("created", channel.Created); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("creator", channel.Creator); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }

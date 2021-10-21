@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/slack-go/slack"
 )
 
@@ -18,8 +19,6 @@ const (
 
 func dataSourceSlackUser() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceSlackUserRead,
-
 		Schema: map[string]*schema.Schema{
 			"query_type": {
 				Type:         schema.TypeString,
@@ -55,10 +54,11 @@ func dataSourceSlackUser() *schema.Resource {
 				Computed: true,
 			},
 		},
+		ReadContext: dataSourceSlackUserRead,
 	}
 }
 
-func dataSourceSlackUserRead(d *schema.ResourceData, meta interface{}) error {
+func dataSourceSlackUserRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	queryType := d.Get("query_type").(string)
 	queryValue := d.Get("query_value").(string)
 
@@ -74,15 +74,14 @@ func dataSourceSlackUserRead(d *schema.ResourceData, meta interface{}) error {
 
 	log.Printf("[INFO] Refreshing Slack User: %s", queryValue)
 
-	client := meta.(*Team).client
-	ctx := context.WithValue(context.Background(), ctxId, queryValue)
+	client := meta.(*slack.Client)
 
 	if queryType == userQueryTypeID {
 		// https://api.slack.com/docs/rate-limits#tier_t4
 		user, err := client.GetUserInfoContext(ctx, queryValue)
 
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		configureUserFunc(d, *user)
@@ -95,7 +94,7 @@ func dataSourceSlackUserRead(d *schema.ResourceData, meta interface{}) error {
 		user, err := client.GetUserByEmailContext(ctx, queryValue)
 
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		configureUserFunc(d, *user)
@@ -109,7 +108,7 @@ func dataSourceSlackUserRead(d *schema.ResourceData, meta interface{}) error {
 		tempUsers, err := client.GetUsersContext(ctx)
 
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		users = &tempUsers
@@ -128,7 +127,7 @@ func dataSourceSlackUserRead(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
-	return fmt.Errorf("a slack user (%s) is not found", queryValue)
+	return diag.FromErr(fmt.Errorf("a slack user (%s) is not found", queryValue))
 }
 
 func dataSourceSlackUserMatch(user *slack.User, queryType string, queryValue string) bool {

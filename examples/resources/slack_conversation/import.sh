@@ -1,0 +1,1 @@
+terraform import slack_coversation.conversation Cxxxxxxxxx
