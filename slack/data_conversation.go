@@ -2,14 +2,16 @@ package slack
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/slack-go/slack"
 )
 
 func dataSourceConversation() *schema.Resource {
 	return &schema.Resource{
+		ReadContext: dataSlackConversationRead,
+
 		Schema: map[string]*schema.Schema{
 			"channel_id": {
 				Type:     schema.TypeString,
@@ -63,13 +65,28 @@ func dataSourceConversation() *schema.Resource {
 }
 
 func dataSlackConversationRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(*slack.Client)
+	client := meta.(*Team).client
+	conversationId := d.Get("channel_id").(string)
 
-	channelId := d.Get("channel_id").(string)
-	channel, err := client.GetConversationInfoContext(ctx, channelId, false)
+	logger := meta.(*Team).logger.withTags(map[string]interface{}{
+		"data":            "conversation",
+		"conversation_id": conversationId,
+	})
+
+	logger.trace(ctx, "Start reading a conversation")
+
+	channel, err := client.GetConversationInfoContext(ctx, conversationId, false)
 
 	if err != nil {
-		return diag.FromErr(err)
+		return diag.Diagnostics{
+			{
+				Severity: diag.Error,
+				Summary:  fmt.Sprintf("Slack provider couldn't read conversation %s due to *%s*", conversationId, err.Error()),
+				Detail:   fmt.Sprintf("Please refer to %s for the details.", "https://api.slack.com/methods/conversations.info"),
+			},
+		}
+	} else {
+		logger.trace(ctx, "Got a response from Slack api")
 	}
 
 	d.SetId(channel.ID)
@@ -112,6 +129,8 @@ func dataSlackConversationRead(ctx context.Context, d *schema.ResourceData, meta
 	if err := d.Set("creator", channel.Creator); err != nil {
 		return diag.FromErr(err)
 	}
+
+	logger.debug(ctx, "Conversation #%s (isArchived = %t)", d.Get("name").(string), d.Get("is_archived").(bool))
 
 	return nil
 }

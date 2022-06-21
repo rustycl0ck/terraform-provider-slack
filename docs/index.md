@@ -23,4 +23,4 @@ provider "slack" {
 
 ### Required
 
-- **token** (String) The OAuth token used to connect to Slack. This can also be set via the SLACK_TOKEN environment variable.
+- `token` (String) The OAuth token used to connect to Slack. This can also be set via the SLACK_TOKEN environment variable.
